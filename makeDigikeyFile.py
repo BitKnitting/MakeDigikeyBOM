@@ -280,7 +280,10 @@ def write_row(csvwriter,part_number,components,url,digikey_part_number,price_tie
     # all value fields are the same
     value = components[0]['value']
     price_1 = price_tiers.get(1,0)
-    price_10 = price_tiers.get(10,0)
+    price_10 = price_tiers.get(10,0) 
+    price_10 = price_10 if price_10 > 0 else price_1
     price_100 = price_tiers.get(100,0)
+    price_100 = price_100 if price_100 > 0 else price_10
     price_1000 = price_tiers.get(1000,0)
+    price_1000 = price_1000 if price_1000 > 0 else price_100
     csvwriter.writerow((refStr,value,numComponents,part_number,digikey_part_number,price_1,price_10,price_100,price_1000,qty_avail,url))
