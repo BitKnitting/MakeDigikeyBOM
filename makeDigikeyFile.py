@@ -22,7 +22,8 @@ def makeDigikeyFile(parts,outDir):
     logStr = 'The number of parts to scrape: {}'.format(len(parts))
     logger.info(logStr)
     counter = 0
-    # Opening and writing the header does not guarantee the file is written since there could be bad parts that are flagged using the can_make_digikey_file flag
+    # Open the BoM output file for writing.  If there is at least one row of BoM data, the file will be written.  Info messages are printed for those rows that
+    # can't be resolved from scraping Digikey.
     fileName = outDir + "MadeDigikeyBOM.csv"    
     with open(fileName,'w') as csvfile:
         csvwriter = csv.writer(csvfile)    

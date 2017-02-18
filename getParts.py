@@ -66,12 +66,16 @@ def group_components_by_part_number(bom2csvFile):
 
 
         # Get the <fields> within the <comp>.  The <fields> tag is used within the Kicad
-        # schematic to store user defined fields.  This becomes super important here because
-        # Getting this to work relies on a part number <field>.  
+        # schematic to store user defined fields.  This becomes super important here because 
         # Note the PN <field>  This contains the all important part numnber.
         part_number_and_value = {}
         part_number_and_value['pn'] = extract_part_number(c)
-        part_number_and_value['value'] = str(c.find('value').string).strip(' \t\n\r')
+        try:
+            part_number_and_value['value'] = str(c.find('value').string).strip(' \t\n\r')
+        except:
+            logstr = 'Error! PN '+part_number_and_value['pn']+ ' has a non-ascii character in the value field'
+            logger.error(logstr) 
+            exit
         # Store the fields for the part using the reference identifier as the key.
         components[str(c['ref'])] = part_number_and_value
     # Group components that share the same part number
