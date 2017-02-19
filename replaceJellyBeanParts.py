@@ -61,7 +61,6 @@ def replaceJellyBeanParts(outputFrom_bom2csv,jellyBeanFile):
                     # removing the component from the modified BoM XML file.
                     # TODO: Remove components whose part numbers are X or x from the modified bom file.  
                     if pnValue == "X" or pnValue == "x":
-                        print c 
                         c.extract()
                         continue
                     # Say for example, the string is 'C'

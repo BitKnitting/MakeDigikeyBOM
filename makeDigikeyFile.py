@@ -12,7 +12,8 @@ WEB_SCRAPE_EXCEPTIONS = (URLError, httplib.HTTPException)
 logger = logging.getLogger(__name__)
 can_make_digikey_file = True
 #
-# The parts variable was created with defaultDict...
+# getParts() groups references to components by the part numbers.   For example if R2 and R3 are 100K resistors, there is
+# one entry in the parts dictionary for them since they both use the same manufacturer/digikey part number.
 # This function returns either:
 # True - the MadeDigikeyBOM.csv file was created and contains the part/price info
 # False - the file was not created because more work is needed by the user to clean up the original schematic.
@@ -91,9 +92,11 @@ def get_digikey_part_html_tree(part_number,url=None,descend=2):
                 insertion_point.string = 'Digi-Key Stock: {}'.format(merged_qty)
         except AttributeError:
             pass
-
- 
-    # Use the part number to lookup the part using the site search function, unless a starting url was given.
+    # Create a URL that returns a Digikey site listing for all Digikey part numbers that have been made for the part.  For example, a 4.7uF capacitor
+    # manufacturing part number = LMK212BJ475KD-T. The URL that is made is a search query on digikey for digikey part numbers based on the manufacturer's part number:
+    # http://www.digikey.com/products/en?WT.z_header=search_go&lang=en&keywords=LMK212BJ475KD-T
+    # when I did this search, three entries were returned. One for a minimum quantity of 4,000, one cut tape for a quantity of 1, and one Digi-reel with a minimum quantity
+    # of 1.  We'd want the cut tape quantity of 1 entry.
     if url is None:
         url = 'http://www.digikey.com/scripts/DkSearch/dksus.dll?WT.z_header=search_go&lang=en&keywords=' + URLL.quote(
             part_number,
@@ -165,38 +168,36 @@ def get_digikey_part_html_tree(part_number,url=None,descend=2):
                 pass
         return tree, url  # Return the parse tree and the URL where it came from.
 
-    # If the tree is for a list of products, then examine the links to try to find the part number.
-    if tree.find('table', id='productTable') is not None:
+    # The table on the digikey page that shows the different digikey packaging for the manufacture page is the productTable (at least
+    # at the time of this scraping).    
+    if tree.find('table', id='productTable') is not None: #if there aren't any, there are no digikey part #'s for the manufacturer's part number.
         if descend <= 0:
             raise PartHtmlError
-        else:
-            # Look for the table of products.
+        else: 
+            # There are digikey part numbers...
+            # First, get the rows.
             products = tree.find(
                 'table',
-                id='productTable').find('tbody').find_all('tr')
-
-            # Extract the product links for the part numbers from the table.
+                id='productTable').find('tbody').find_all('tr')   
+            # Make a list where the first col = <td> for the unit price and the
+            # second col = <td> for the dkPartNumber.
             # Extract links for both manufacturer and catalog numbers.
-            product_links = [p.find('td',
-                                    class_='tr-mfgPartNumber').a
-                             for p in products]
-            product_links.extend([p.find('td',
-                                    class_='tr-dkPartNumber').a
-                             for p in products])
-
-            # Extract all the part numbers from the text portion of the links.
-            part_numbers = [l.text for l in product_links]
-
-            # Look for the part number in the list that most closely matches the requested part number.
-            match = difflib.get_close_matches(part_number, part_numbers, 1, 0.0)[0]
-
-            # Now look for the link that goes with the closest matching part number.
-            for l in product_links:
-                if l.text == match:
-                    # Get the tree for the linked-to page and return that.
-                    return get_digikey_part_html_tree(part_number,
-                                                      url=l['href'],
-                                                      descend=descend - 1)
+            td_tags = [p.find('td',class_='tr-dkPartNumber').a for p in products]
+            digikey_part_numbers = [l.text for l in td_tags]
+            td_tags = [p.find('td',class_='tr-minQty') for p in products]
+            minimum_quantities = [l.getText().strip() for l in td_tags]
+            td_tags = [p.find('td',class_='tr-unitPrice') for p in products]
+            unit_prices = [l.getText().strip() for l in td_tags]
+            i = 0
+            for digikeyPart in digikey_part_numbers:
+                if minimum_quantities[i] == '1':
+                    if "Digi" not in unit_prices:
+                        part_number = digikeyPart
+                        break
+                i+=1
+            # Get the tree for the linked-to page and return that.
+            print part_number
+            return get_digikey_part_html_tree(part_number)
 
     # If the HTML contains a list of part categories, then give up.
     if tree.find('form', id='keywordSearchForm') is not None:
