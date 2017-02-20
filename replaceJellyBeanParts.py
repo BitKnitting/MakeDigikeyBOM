@@ -58,8 +58,7 @@ def replaceJellyBeanParts(outputFrom_bom2csv,jellyBeanFile):
                 if name == 'pn':
                     pnValue = (c.find('field').string)
                     # If the PN value is X, this component should be ignored from the BoM.  This means
-                    # removing the component from the modified BoM XML file.
-                    # TODO: Remove components whose part numbers are X or x from the modified bom file.  
+                    # removing the component from the modified BoM XML file. 
                     if pnValue == "X" or pnValue == "x":
                         c.extract()
                         continue
@@ -78,7 +77,7 @@ def replaceJellyBeanParts(outputFrom_bom2csv,jellyBeanFile):
                             if row['Category'] == pnValue:
                                 if row['Value'] == value:
                                     # Pull out the manufacturer's part number that will replace the Category string (e.g.: "Capacitor")
-                                    mfr_pn = row['MFR_PN']
+                                    mfr_pn = row['PN']
                                     # Modify the xml object by replacing the jellybean part reference to a manufactuer's part number
                                     c.fields.field.string = c.fields.field.string.replace(pnValue,mfr_pn)
                                     didNotFindJellyBeanPart = False

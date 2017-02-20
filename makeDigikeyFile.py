@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 import urllib as URLL
 import httplib
-import difflib
+import string
 import re
 import csv
 from urllib2 import urlopen, Request, URLError
@@ -25,7 +25,7 @@ def makeDigikeyFile(parts,outDir):
     counter = 0
     # Open the BoM output file for writing.  If there is at least one row of BoM data, the file will be written.  Info messages are printed for those rows that
     # can't be resolved from scraping Digikey.
-    fileName = outDir + "MadeDigikeyBOM.csv"    
+    fileName = outDir + "//MadeDigikeyBOM.csv"    
     with open(fileName,'w') as csvfile:
         csvwriter = csv.writer(csvfile)    
         write_header(csvwriter)
@@ -50,9 +50,9 @@ def makeDigikeyFile(parts,outDir):
             # get columns of the spreadsheet.
             # NOTE: I use 'None' as the part number to exclude components with this part from a digikey scrape.
             if (part_number != 'None'):    
-                url, digikey_price_number,price_tiers, qty_avail = scrape_part(part_number)
+                url, digikey_part_number,price_tiers, qty_avail = scrape_part(part_number)
                 if can_make_digikey_file:
-                    write_row(csvwriter,part_number,components,url,digikey_price_number,price_tiers,qty_avail)  
+                    write_row(csvwriter,part_number,components,url,digikey_part_number,price_tiers,qty_avail)  
     return can_make_digikey_file 
 def scrape_part(part_number):
     html_tree,url = get_digikey_part_html_tree(part_number) 
@@ -170,7 +170,7 @@ def get_digikey_part_html_tree(part_number,url=None,descend=2):
 
     # The table on the digikey page that shows the different digikey packaging for the manufacture page is the productTable (at least
     # at the time of this scraping).    
-    if tree.find('table', id='productTable') is not None: #if there aren't any, there are no digikey part #'s for the manufacturer's part number.
+    if tree.find('table', id='productTable') is not None: #if the productTable isn't in the HTMLl, there are no digikey part #'s for the manufacturer's part number.
         if descend <= 0:
             raise PartHtmlError
         else: 
@@ -179,9 +179,10 @@ def get_digikey_part_html_tree(part_number,url=None,descend=2):
             products = tree.find(
                 'table',
                 id='productTable').find('tbody').find_all('tr')   
-            # Make a list where the first col = <td> for the unit price and the
-            # second col = <td> for the dkPartNumber.
-            # Extract links for both manufacturer and catalog numbers.
+            # The cells of the html returned contain rows that include the digikey part number, minimum quantities for each, and the manufacturer
+            # part number (which will be the same since the rows are about digikey's packaging of the manufacturer's part)
+            # The part creates a list (which can be thought of as a column in the table) for the digikey part number, minimum qty, and unit price
+            # From these lists we'll find the digikey part that has a minimum quantity of 1 and is not a Digi-Reel.
             td_tags = [p.find('td',class_='tr-dkPartNumber').a for p in products]
             digikey_part_numbers = [l.text for l in td_tags]
             td_tags = [p.find('td',class_='tr-minQty') for p in products]
@@ -190,13 +191,12 @@ def get_digikey_part_html_tree(part_number,url=None,descend=2):
             unit_prices = [l.getText().strip() for l in td_tags]
             i = 0
             for digikeyPart in digikey_part_numbers:
-                if minimum_quantities[i] == '1':
-                    if "Digi" not in unit_prices:
+                if minimum_quantities[i] == '1': # we're focused on low volumes, so looking for Digikey parts where we can buy a minimum of 1.
+                    if "Digi" not in unit_prices: # if Digi is in the unit price, this is Digikey part is packaged as a Digi-Reel.  We're not using a pick and place.  Digi-Reel packaging is more expensive.
                         part_number = digikeyPart
                         break
                 i+=1
-            # Get the tree for the linked-to page and return that.
-            print part_number
+            # TODO: Error handling if no digikeyPart was found where the min qty = 1 and wasn't Digi-Reel packaging
             return get_digikey_part_html_tree(part_number)
 
     # If the HTML contains a list of part categories, then give up.
@@ -211,21 +211,24 @@ def get_digikey_part_html_tree(part_number,url=None,descend=2):
 #
 # 
 def get_digikey_qty_avail(html_tree):
+    class keeponly(object):
+        def __init__(self, keep):
+            self.keep = set(ord(c) for c in keep)
+        def __getitem__(self, key):
+            if key in self.keep:
+                return key
+            return None
     '''Get the available quantity of the part from the Digikey product page.'''
     try:
+        # The digikey page has an available quantity cell somewhere buried in the HTML... it can have lots of characters that make for a messy integer..
+        # here is an example: \n\n\n\n216,464\n\nCan ship immediately                \n
+        # I don't know Python well enough to figure out how to strip these charaacters, so I pretty much copy/pasted what I found here: http://stackoverflow.com/questions/1249388/removing-all-non-numeric-characters-from-string-in-python
         qty_str = html_tree.find('td', id='quantityAvailable').text
+        qty = qty_str.translate(keeponly(string.digits))
+        return qty
     except AttributeError:
-        # No quantity found (not even 0) so this is probably a non-stocked part.
-        # Return None so the part won't show in the spreadsheet for this dist.
-        return None
-    try:
-        qty_str = re.search('(stock:\s*)([0-9,]*)', qty_str,
-                            re.IGNORECASE).group(2)
-        return int(re.sub('[^0-9]', '', qty_str))
-    except (AttributeError, ValueError):
-        # No quantity found (not even 0) so this is probably a non-stocked part.
-        # Return None so the part won't show in the spreadsheet for this dist.
-        return None
+        # No quantity found .
+        return 0
 def digikey_part_is_reeled(html_tree):
     '''Returns True if this Digi-Key part is reeled or Digi-reeled.'''
     qty_tiers = list(get_digikey_price_tiers(html_tree).keys())
